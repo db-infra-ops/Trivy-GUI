@@ -204,6 +204,7 @@ def report_info(report):
         "os": " ".join(x for x in (os_info.get("Family"), os_info.get("Name")) if x),
         "eosl": bool(os_info.get("EOSL")),
         "imageId": md.get("ImageID", ""),
+        "trivyVersion": (report.get("Trivy") or {}).get("Version", ""),
     }
 
 

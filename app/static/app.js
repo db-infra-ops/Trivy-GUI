@@ -58,6 +58,13 @@ const I18N = {
     "col.fixed": "Behoben in", "col.title": "Titel", "col.target": "Ziel",
     "line": "Zeile {n}",
 
+    "btn.report": "HTML-Bericht",
+    "report.title": "Trivy-Sicherheitsbericht", "report.target": "Ziel", "report.type": "Typ",
+    "report.scanned": "Gescannt", "report.os": "Betriebssystem", "report.trivy": "Trivy-Version",
+    "report.scanners": "Scanner", "report.severities": "Schweregrade", "report.filter": "Filter",
+    "report.noFilter": "keiner (alle Funde)", "report.count": "{n} von {total} Funden im Bericht",
+    "report.empty": "Keine Funde.", "report.generated": "Erstellt am {d} mit Trivy GUI",
+
     "err.invalid_type": "Unbekannter Scan-Typ.",
     "err.invalid_image": "Ungültiger Image-Name (Beispiel: nginx:1.27 oder ghcr.io/org/app:tag).",
     "err.invalid_repo": "Ungültige Repository-URL (nur https://…, z. B. https://github.com/org/repo).",
@@ -119,6 +126,13 @@ const I18N = {
     "col.severity": "Severity", "col.id": "ID", "col.pkg": "Package", "col.installed": "Installed",
     "col.fixed": "Fixed in", "col.title": "Title", "col.target": "Target",
     "line": "Line {n}",
+
+    "btn.report": "HTML report",
+    "report.title": "Trivy security report", "report.target": "Target", "report.type": "Type",
+    "report.scanned": "Scanned", "report.os": "Operating system", "report.trivy": "Trivy version",
+    "report.scanners": "Scanners", "report.severities": "Severities", "report.filter": "Filter",
+    "report.noFilter": "none (all findings)", "report.count": "{n} of {total} findings in this report",
+    "report.empty": "No findings.", "report.generated": "Generated on {d} with Trivy GUI",
 
     "err.invalid_type": "Unknown scan type.",
     "err.invalid_image": "Invalid image name (example: nginx:1.27 or ghcr.io/org/app:tag).",
@@ -438,6 +452,7 @@ function renderDetail() {
       : el("button", { class: "btn", onclick: () => rescanCurrent() }, t("btn.rescan")),
     scan.status === "done" ? el("a", { class: "btn", href: `/api/scans/${scan.id}/raw` }, "JSON") : null,
     scan.status === "done" ? el("button", { class: "btn", onclick: exportCsv }, "CSV") : null,
+    scan.status === "done" ? el("button", { class: "btn", onclick: exportHtml }, t("btn.report")) : null,
     el("button", { class: "btn danger", onclick: () => deleteCurrent() }, t("btn.delete")),
   );
 
@@ -594,6 +609,21 @@ function renderTable() {
   $("#table-wrap").replaceChildren(el("table", {}, thead, tbody));
 }
 
+function downloadFile(content, type, name) {
+  const blob = new Blob([content], { type });
+  const a = el("a", { href: URL.createObjectURL(blob), download: name });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+function exportBaseName() {
+  const { scan } = state.current;
+  const safe = scan.target.replace(/[^A-Za-z0-9._-]+/g, "_").slice(0, 80);
+  return `trivy-${safe}-${scan.id.slice(0, 8)}`;
+}
+
 function exportCsv() {
   const rows = filteredFindings().map((r) => ({ ...r, installed: installedText(r) }));
   const cols = ["severity", "kind", "id", "pkg", "installed", "fixed", "status", "title", "target", "url"];
@@ -603,12 +633,141 @@ function exportCsv() {
     return `"${s.replace(/"/g, '""')}"`;
   };
   const csv = [cols.join(";"), ...rows.map((r) => cols.map((c) => esc(r[c])).join(";"))].join("\r\n");
-  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
-  const a = el("a", { href: URL.createObjectURL(blob), download: `trivy-${state.current.scan.id.slice(0, 8)}.csv` });
-  document.body.append(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  downloadFile("﻿" + csv, "text/csv;charset=utf-8", `${exportBaseName()}.csv`);
+}
+
+// ---------------------------------------------------------------------------
+// HTML-Bericht (eigenstaendige Datei, druckbar)
+// ---------------------------------------------------------------------------
+
+const REPORT_CSS = `
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+body { margin: 0; padding: 32px; color: #1c2128; background: #fff; font: 13px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 1200px; margin: 0 auto; }
+h1 { font-size: 22px; margin: 0 0 2px; }
+h2 { font-size: 15px; margin: 28px 0 8px; word-break: break-all; }
+.sub { color: #5f6b7a; margin: 0 0 20px; word-break: break-all; font-size: 15px; }
+.muted { color: #5f6b7a; font-weight: normal; font-size: 12px; }
+dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0 0 20px; }
+dt { color: #5f6b7a; }
+dd { margin: 0; word-break: break-word; }
+.summary { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin: 0 0 8px; }
+.box { border: 1px solid #dde1e7; border-top: 4px solid #6b7280; border-radius: 6px; padding: 8px 12px; }
+.box b { display: block; font-size: 22px; }
+.box.CRITICAL { border-top-color: #b42318; } .box.HIGH { border-top-color: #e0590b; }
+.box.MEDIUM { border-top-color: #b88500; } .box.LOW { border-top-color: #2f7fd1; }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #dde1e7; vertical-align: top; }
+th { background: #f0f2f5; white-space: nowrap; }
+tr { break-inside: avoid; }
+thead { display: table-header-group; }
+.mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 12px; }
+.nowrap { white-space: nowrap; }
+.fixed { color: #1a7f37; font-weight: 600; }
+.sev { display: inline-block; padding: 1px 7px; border-radius: 4px; color: #fff; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+.sev-CRITICAL { background: #b42318; } .sev-HIGH { background: #e0590b; } .sev-MEDIUM { background: #b88500; }
+.sev-LOW { background: #2f7fd1; } .sev-UNKNOWN { background: #6b7280; }
+a { color: #1f6feb; text-decoration: none; }
+footer { margin-top: 32px; padding-top: 12px; border-top: 1px solid #dde1e7; color: #5f6b7a; font-size: 12px; }
+@media (max-width: 700px) { body { padding: 16px; } .summary { grid-template-columns: repeat(3, 1fr); } }
+@media print {
+  body { padding: 0; font-size: 11px; }
+  .sev, .box, th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  a { color: inherit; }
+}`;
+
+function escHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function activeFilterText() {
+  const f = state.filter;
+  const parts = [];
+  if (f.sev.size !== SEV.length) parts.push(SEV.filter((s) => f.sev.has(s)).map(sevLabel).join(", "));
+  if (f.kind) parts.push(t(`kinds.${f.kind}`));
+  if (f.target) parts.push(f.target);
+  if (f.fixedOnly) parts.push(t("filter.fixedOnly"));
+  if (f.q.trim()) parts.push(`"${f.q.trim()}"`);
+  return parts.length ? parts.join(" · ") : t("report.noFilter");
+}
+
+function buildReportHtml() {
+  const { scan } = state.current;
+  const info = scan.info || {};
+  const opts = scan.options || {};
+  const rows = filteredFindings();
+
+  const counts = Object.fromEntries(SEV.map((s) => [s, 0]));
+  const byTarget = new Map();
+  for (const x of rows) {
+    counts[SEV.includes(x.severity) ? x.severity : "UNKNOWN"]++;
+    if (!byTarget.has(x.target)) byTarget.set(x.target, []);
+    byTarget.get(x.target).push(x);
+  }
+
+  const meta = [
+    [t("report.target"), scan.target],
+    [t("report.type"), t(`type.${scan.type}`)],
+    [t("report.scanned"), fmtDate(scan.finished || scan.created)],
+    info.os ? [t("report.os"), info.os + (info.eosl ? t("detail.eol") : "")] : null,
+    [t("report.trivy"), info.trivyVersion || (state.info && state.info.version) || "–"],
+    [t("report.scanners"), (opts.scanners || []).map((s) => t(`kinds.${s}`)).join(", ")],
+    [t("report.severities"), (opts.severities || []).map(sevLabel).join(", ")
+      + (opts.ignoreUnfixed ? ` · ${t("detail.fixedOnly")}` : "")],
+    [t("report.filter"), activeFilterText()],
+  ].filter(Boolean);
+
+  const sevCell = (s) => `<span class="sev sev-${SEV.includes(s) ? s : "UNKNOWN"}">${escHtml(sevLabel(s))}</span>`;
+  const idCell = (x) => {
+    const url = safeUrl(x.url);
+    const id = url ? `<a href="${escHtml(url)}">${escHtml(x.id)}</a>` : escHtml(x.id);
+    return id + (x.kind !== "vuln" ? `<div class="muted">${escHtml(t(`kind.${x.kind}`))}</div>` : "");
+  };
+  const fixedCell = (x) => (x.fixed
+    ? `<td class="mono ${x.kind === "vuln" ? "fixed" : ""}">${escHtml(x.fixed)}</td>`
+    : `<td class="mono muted">${escHtml(x.kind === "vuln" ? x.status || "–" : "")}</td>`);
+  const head = ["severity", "id", "pkg", "installed", "fixed", "title"]
+    .map((k) => `<th>${escHtml(t(`col.${k}`))}</th>`).join("");
+
+  const sections = [...byTarget].map(([target, list]) => `
+<section>
+  <h2>${escHtml(target)} <span class="muted">(${list.length})</span></h2>
+  <table>
+    <thead><tr>${head}</tr></thead>
+    <tbody>${list.map((x) => `
+      <tr><td class="nowrap">${sevCell(x.severity)}</td><td class="mono nowrap">${idCell(x)}</td><td class="mono">${escHtml(x.pkg)}</td><td class="mono nowrap">${escHtml(installedText(x))}</td>${fixedCell(x)}<td>${escHtml(x.title)}</td></tr>`).join("")}
+    </tbody>
+  </table>
+</section>`).join("");
+
+  return `<!doctype html>
+<html lang="${lang}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
+<meta name="referrer" content="no-referrer">
+<title>${escHtml(t("report.title"))} – ${escHtml(scan.target)}</title>
+<style>${REPORT_CSS}</style>
+</head>
+<body>
+<main>
+  <h1>${escHtml(t("report.title"))}</h1>
+  <p class="sub">${escHtml(scan.target)}</p>
+  <dl>${meta.map(([k, v]) => `<dt>${escHtml(k)}</dt><dd>${escHtml(v)}</dd>`).join("")}</dl>
+  <div class="summary">${SEV.map((s) => `<div class="box ${s}"><b>${counts[s]}</b>${escHtml(sevLabel(s))}</div>`).join("")}</div>
+  <p class="muted">${escHtml(t("report.count", { n: rows.length, total: (state.current.findings || []).length }))}</p>
+  ${sections || `<p>${escHtml(t("report.empty"))}</p>`}
+  <footer>${escHtml(t("report.generated", { d: fmtDate(new Date().toISOString()) }))}</footer>
+</main>
+</body>
+</html>
+`;
+}
+
+function exportHtml() {
+  downloadFile(buildReportHtml(), "text/html;charset=utf-8", `${exportBaseName()}.html`);
 }
 
 // ---------------------------------------------------------------------------

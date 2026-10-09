@@ -11,7 +11,7 @@ Schlanke Weboberfläche für [Trivy](https://github.com/aquasecurity/trivy), lä
 - Ergebnisübersicht nach Schweregrad, Volltextsuche, Filter (Art, Ziel, „nur mit Fix“), sortierbare Tabelle
 - Scan-Verlauf, erneut scannen, Abbrechen, Löschen
 - „Nur Schwachstellen mit verfügbarem Fix“ ist standardmäßig aktiv (wie `--ignore-unfixed`)
-- Export als Trivy-JSON oder CSV (Excel-tauglich)
+- Export als Trivy-JSON, CSV (Excel-tauglich) oder eigenständiger HTML-Bericht (druckbar / als PDF speicherbar, enthält die aktuell gefilterten Funde)
 - Oberfläche auf Deutsch und Englisch (Umschalter in der Kopfzeile, wird im Browser gespeichert)
 - Fertiges Multi-Arch-Image (amd64/arm64) in der GitHub Container Registry
 - Keine Abhängigkeiten außer Trivy und Python 3 (nur Standardbibliothek)

@@ -11,7 +11,7 @@ Lightweight web interface for [Trivy](https://github.com/aquasecurity/trivy) tha
 - Results overview by severity, full-text search, filters (type, target, "fixed only"), sortable table
 - Scan history: rescan, cancel, delete
 - "Only vulnerabilities with an available fix" is enabled by default (like `--ignore-unfixed`)
-- Export as Trivy JSON or CSV (Excel-friendly)
+- Export as Trivy JSON, CSV (Excel-friendly) or a standalone HTML report (printable / save as PDF, contains the currently filtered findings)
 - User interface in English and German (switch in the header, remembered per browser)
 - Prebuilt multi-arch image (amd64/arm64) on GitHub Container Registry
 - No dependencies besides Trivy and Python 3 (standard library only)
