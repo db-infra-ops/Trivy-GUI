@@ -86,6 +86,53 @@ The GitHub Actions workflow [`.github/workflows/docker.yml`](.github/workflows/d
 Every image ships with an SBOM and build provenance. All actions are pinned to commit SHAs;
 Dependabot keeps them up to date.
 
+## Deployment example
+
+Example for running Trivy GUI on a server: a pinned image version, password protection and
+[Caddy](https://caddyserver.com/) as a reverse proxy with automatic HTTPS (Let's Encrypt).
+Trivy GUI itself is not published on any port; it is only reachable through Caddy.
+
+`docker-compose.yml` on the server:
+
+```yaml
+services:
+  trivy-gui:
+    image: ghcr.io/db-infra-ops/trivy-gui:0.5.0   # pin a version, do not use latest
+    restart: unless-stopped
+    environment:
+      AUTH_USER: admin
+      AUTH_PASSWORD: ${TRIVY_GUI_PASSWORD:?TRIVY_GUI_PASSWORD is not set}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro   # optional, only for local images
+      - trivy-gui-data:/data
+      - trivy-cache:/cache
+
+  caddy:
+    image: caddy:2.10
+    restart: unless-stopped
+    command: caddy reverse-proxy --from trivy.example.com --to trivy-gui:8080
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy-data:/data
+
+volumes:
+  trivy-gui-data:
+  trivy-cache:
+  caddy-data:
+```
+
+Set the password in a `.env` file next to it (`TRIVY_GUI_PASSWORD=...`), point the DNS record of
+`trivy.example.com` to the server, then start:
+
+```bash
+docker compose up -d
+```
+
+**Update:** change the image tag (e.g. `0.5.0` → `0.6.0`), then run `docker compose pull && docker compose up -d`.
+Scan history and the Trivy database are kept in the volumes.
+
 ## Structure
 
 ```
