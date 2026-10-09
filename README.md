@@ -117,7 +117,7 @@ Example for running Trivy GUI on a server behind an external reverse proxy such 
 ```yaml
 services:
   trivy-gui:
-    image: ghcr.io/db-infra-ops/trivy-gui:0.6.1   # pin a version, do not use latest
+    image: ghcr.io/db-infra-ops/trivy-gui:0.6.2   # pin a version, do not use latest
     restart: unless-stopped
     ports:
       - "8080:8080"   # better: bind to an internal IP only, e.g. "10.0.0.5:8080:8080"
@@ -163,7 +163,7 @@ Notes:
   forward target. In that case the `ports:` section can be removed entirely.
 - Scans run in the background, so long scans do not hit proxy timeouts.
 
-**Update:** change the image tag (e.g. `0.6.1` → `0.7.0`), then run `docker compose pull && docker compose up -d`.
+**Update:** change the image tag (e.g. `0.6.2` → `0.7.0`), then run `docker compose pull && docker compose up -d`.
 Scan history and the Trivy database are kept in the volumes.
 
 ## Structure
