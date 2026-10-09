@@ -85,3 +85,7 @@ Daten: Volume `trivy-gui-data` (`/data/scans/<id>/meta.json`, `result.json`, `tr
 ```bash
 TRIVY_BIN=/pfad/zu/trivy DATA_DIR=./data PORT=8080 python3 app/server.py
 ```
+
+## Lizenz
+
+[Apache License 2.0](LICENSE)
