@@ -95,11 +95,13 @@ checks the origin of write requests (CSRF) and never shows secret contents ("Mat
 The GitHub Actions workflow [`.github/workflows/docker.yml`](.github/workflows/docker.yml) builds the image for
 `linux/amd64` and `linux/arm64` and publishes it to `ghcr.io/db-infra-ops/trivy-gui`:
 
-| Trigger | Tags |
+| Trigger | Result |
 |---|---|
-| Push to `main` | `latest`, `sha-<commit>` |
-| Git tag `v1.2.3` | `1.2.3`, `1.2`, `sha-<commit>` |
-| Pull request | build only, nothing is pushed |
+| Git tag `v1.2.3` (release) | **one** image tagged `1.2.3`, `1.2` and `latest` |
+| Push to `main` | build + smoke test only, nothing is published |
+| Pull request | build + smoke test only, nothing is published |
+
+`latest` therefore always points to the newest release. Pre-release tags such as `v1.3.0-rc1` are published without `latest`.
 
 Before publishing, a smoke test starts the built container and runs real scans (a local image via the Docker socket and a registry image).
 Every image ships with an SBOM and build provenance. All actions are pinned to commit SHAs;

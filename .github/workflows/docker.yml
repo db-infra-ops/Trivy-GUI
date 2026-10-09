@@ -10,6 +10,10 @@ on:
 
 # Alle Actions sind per Commit-SHA gepinnt (Schutz vor manipulierten Tags,
 # vgl. Trivy-Supply-Chain-Vorfall Maerz 2026). Updates kommen ueber Dependabot.
+#
+# Veroeffentlicht wird nur bei Release-Tags (v*): ein einziges Image mit den Tags
+# <version>, <major>.<minor> und latest. Pushes auf main und Pull Requests werden
+# nur gebaut (amd64 + arm64) und per Smoke-Test geprueft.
 
 permissions:
   contents: read
@@ -41,7 +45,7 @@ jobs:
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Log in to GHCR
-        if: github.event_name != 'pull_request'
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ${{ env.REGISTRY }}
@@ -53,11 +57,12 @@ jobs:
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          flavor: |
+            latest=false
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=sha,format=short
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') }}
           labels: |
             org.opencontainers.image.title=Trivy GUI
             org.opencontainers.image.description=Lightweight web UI for Trivy
@@ -74,12 +79,12 @@ jobs:
       - name: Smoke test
         run: bash .github/scripts/smoke-test.sh trivy-gui:smoke
 
-      - name: Build and push
+      - name: Build (amd64 + arm64), push on release tags
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name != 'pull_request' }}
+          push: ${{ startsWith(github.ref, 'refs/tags/v') }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           provenance: mode=max

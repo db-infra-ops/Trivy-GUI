@@ -96,11 +96,13 @@ prüft bei schreibenden Anfragen die Origin (CSRF) und übernimmt keine Secret-I
 Der GitHub-Actions-Workflow [`.github/workflows/docker.yml`](.github/workflows/docker.yml) baut das Image für
 `linux/amd64` und `linux/arm64` und veröffentlicht es unter `ghcr.io/db-infra-ops/trivy-gui`:
 
-| Auslöser | Tags |
+| Auslöser | Ergebnis |
 |---|---|
-| Push auf `main` | `latest`, `sha-<commit>` |
-| Git-Tag `v1.2.3` | `1.2.3`, `1.2`, `sha-<commit>` |
-| Pull Request | nur bauen, nichts wird veröffentlicht |
+| Git-Tag `v1.2.3` (Release) | **ein** Image mit den Tags `1.2.3`, `1.2` und `latest` |
+| Push auf `main` | nur bauen + Smoke-Test, nichts wird veröffentlicht |
+| Pull Request | nur bauen + Smoke-Test, nichts wird veröffentlicht |
+
+`latest` zeigt damit immer auf das neueste Release. Vorab-Versionen wie `v1.3.0-rc1` werden ohne `latest` veröffentlicht.
 
 Vor der Veröffentlichung startet ein Smoke-Test den gebauten Container und führt echte Scans aus (lokales Image über den Docker-Socket und ein Registry-Image).
 Jedes Image enthält ein SBOM und Build-Provenance. Alle Actions sind per Commit-SHA gepinnt,
