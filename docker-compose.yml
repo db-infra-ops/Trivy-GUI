@@ -4,8 +4,6 @@ services:
     image: ghcr.io/db-infra-ops/trivy-gui:latest
     build:
       context: .
-      args:
-        TRIVY_VERSION: "0.69.3"
     container_name: trivy-gui
     ports:
       # Nur lokal erreichbar. Fuer Zugriff aus dem Netz "127.0.0.1:" entfernen

@@ -1,8 +1,11 @@
-# Trivy-Version bewusst fest pinnen, niemals "latest".
+# Trivy-Version bewusst per Tag UND Digest pinnen, niemals "latest".
 # Hintergrund: Im Maerz 2026 wurden v0.69.4 (Binary) sowie die Docker-Hub-Tags
 # 0.69.5 und 0.69.6 kompromittiert. Siehe README, Abschnitt "Sicherheit".
-ARG TRIVY_VERSION=0.69.3
-FROM aquasec/trivy:${TRIVY_VERSION}
+# Beim Update beide Werte gemeinsam aendern:
+#   docker buildx imagetools inspect aquasec/trivy:<version>
+ARG TRIVY_VERSION=0.74.0
+ARG TRIVY_DIGEST=sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969
+FROM aquasec/trivy:${TRIVY_VERSION}@${TRIVY_DIGEST}
 
 RUN apk add --no-cache python3
 

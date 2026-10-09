@@ -10,6 +10,7 @@ Lightweight web interface for [Trivy](https://github.com/aquasecurity/trivy) tha
 - Vulnerabilities, secrets, misconfigurations and licenses
 - Results overview by severity, full-text search, filters (type, target, "fixed only"), sortable table
 - Scan history: rescan, cancel, delete
+- "Only vulnerabilities with an available fix" is enabled by default (like `--ignore-unfixed`)
 - Export as Trivy JSON or CSV (Excel-friendly)
 - User interface in English and German (switch in the header, remembered per browser)
 - Prebuilt multi-arch image (amd64/arm64) on GitHub Container Registry
@@ -52,15 +53,14 @@ Alternatively, private registries can be used by mounting your Docker config:
 
 **Pin the Trivy version.** In March 2026 Trivy was hit by a supply-chain attack:
 release v0.69.4 as well as the Docker Hub images `aquasec/trivy:0.69.5` and `0.69.6` were compromised
-(CVE-2026-33634, GHSA-69fq-xp46-6x23). This project therefore pins `0.69.3` and never uses `latest`.
+(CVE-2026-33634, GHSA-69fq-xp46-6x23). This project therefore pins Trivy `0.74.0` by tag **and** digest and never uses `latest`.
 
 - Check the [official releases](https://github.com/aquasecurity/trivy/releases) and advisories before upgrading.
-- Even safer: pin the base image by digest:
+- Prefer releases that are at least two weeks old.
+- To upgrade, look up the digest of the new version and change `TRIVY_VERSION` and `TRIVY_DIGEST` in the `Dockerfile` together:
   ```bash
-  docker pull aquasec/trivy:0.69.3
-  docker inspect --format "{{index .RepoDigests 0}}" aquasec/trivy:0.69.3
+  docker buildx imagetools inspect aquasec/trivy:<version>
   ```
-  Then put the digest into the `Dockerfile`: `FROM aquasec/trivy:0.69.3@sha256:...`
 
 **Docker socket.** `/var/run/docker.sock` is mounted to scan local images. Anyone with access to the socket effectively has
 root on the host, and `:ro` does not change that. Therefore:
@@ -83,6 +83,7 @@ The GitHub Actions workflow [`.github/workflows/docker.yml`](.github/workflows/d
 | Git tag `v1.2.3` | `1.2.3`, `1.2`, `sha-<commit>` |
 | Pull request | build only, nothing is pushed |
 
+Before publishing, a smoke test starts the built container and runs real scans (a local image via the Docker socket and a registry image).
 Every image ships with an SBOM and build provenance. All actions are pinned to commit SHAs;
 Dependabot keeps them up to date.
 
@@ -96,7 +97,7 @@ Example for running Trivy GUI on a server behind an external reverse proxy such 
 ```yaml
 services:
   trivy-gui:
-    image: ghcr.io/db-infra-ops/trivy-gui:0.5.0   # pin a version, do not use latest
+    image: ghcr.io/db-infra-ops/trivy-gui:0.5.1   # pin a version, do not use latest
     restart: unless-stopped
     ports:
       - "8080:8080"   # better: bind to an internal IP only, e.g. "10.0.0.5:8080:8080"
@@ -142,7 +143,7 @@ Notes:
   forward target. In that case the `ports:` section can be removed entirely.
 - Scans run in the background, so long scans do not hit proxy timeouts.
 
-**Update:** change the image tag (e.g. `0.5.0` → `0.6.0`), then run `docker compose pull && docker compose up -d`.
+**Update:** change the image tag (e.g. `0.5.1` → `0.6.0`), then run `docker compose pull && docker compose up -d`.
 Scan history and the Trivy database are kept in the volumes.
 
 ## Structure
