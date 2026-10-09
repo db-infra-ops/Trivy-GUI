@@ -78,7 +78,7 @@ Das Release v0.69.4 sowie die Docker-Hub-Images `aquasec/trivy:0.69.5` und `0.69
 - Beim Build spielt `apk upgrade` Sicherheitsupdates der Alpine-Pakete über das Basisimage. Schwachstellen im Trivy-Binary selbst lassen sich nur durch eine neuere Trivy-Version beheben.
 - Für ein Update den Digest der neuen Version ermitteln und `TRIVY_VERSION` und `TRIVY_DIGEST` im `Dockerfile` gemeinsam ändern:
   ```bash
-  docker buildx imagetools inspect aquasec/trivy:<version>
+  docker buildx imagetools inspect ghcr.io/aquasecurity/trivy:<version>
   ```
 
 **Docker-Socket.** Für lokale Images wird `/var/run/docker.sock` eingebunden. Wer Zugriff auf den Socket hat, hat faktisch
