@@ -86,11 +86,10 @@ The GitHub Actions workflow [`.github/workflows/docker.yml`](.github/workflows/d
 Every image ships with an SBOM and build provenance. All actions are pinned to commit SHAs;
 Dependabot keeps them up to date.
 
-## Deployment example
+## Deployment example (behind a reverse proxy)
 
-Example for running Trivy GUI on a server: a pinned image version, password protection and
-[Caddy](https://caddyserver.com/) as a reverse proxy with automatic HTTPS (Let's Encrypt).
-Trivy GUI itself is not published on any port; it is only reachable through Caddy.
+Example for running Trivy GUI on a server behind an external reverse proxy such as
+[Nginx Proxy Manager](https://nginxproxymanager.com/) (NPM), with a pinned image version and password protection.
 
 `docker-compose.yml` on the server:
 
@@ -99,6 +98,8 @@ services:
   trivy-gui:
     image: ghcr.io/db-infra-ops/trivy-gui:0.5.0   # pin a version, do not use latest
     restart: unless-stopped
+    ports:
+      - "8080:8080"   # better: bind to an internal IP only, e.g. "10.0.0.5:8080:8080"
     environment:
       AUTH_USER: admin
       AUTH_PASSWORD: ${TRIVY_GUI_PASSWORD:?TRIVY_GUI_PASSWORD is not set}
@@ -107,28 +108,39 @@ services:
       - trivy-gui-data:/data
       - trivy-cache:/cache
 
-  caddy:
-    image: caddy:2.10
-    restart: unless-stopped
-    command: caddy reverse-proxy --from trivy.example.com --to trivy-gui:8080
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - caddy-data:/data
-
 volumes:
   trivy-gui-data:
   trivy-cache:
-  caddy-data:
 ```
 
-Set the password in a `.env` file next to it (`TRIVY_GUI_PASSWORD=...`), point the DNS record of
-`trivy.example.com` to the server, then start:
+Set the password in a `.env` file next to it (`TRIVY_GUI_PASSWORD=...`) and start:
 
 ```bash
 docker compose up -d
 ```
+
+**Proxy host in NPM:**
+
+| Field | Value |
+|---|---|
+| Domain Names | `trivy.example.com` |
+| Scheme | `http` |
+| Forward Hostname / IP | IP of the Docker host running Trivy GUI |
+| Forward Port | `8080` |
+| Block Common Exploits | on |
+| SSL | request a Let's Encrypt certificate, enable *Force SSL* and *HTTP/2* |
+
+Notes:
+
+- **No `trusted_proxies` setting is needed.** The app does not evaluate `X-Forwarded-*` headers (no IP-based rules,
+  no absolute redirects). The only requirement: the proxy must pass the original `Host` header through, because write
+  requests are checked against it (CSRF protection). NPM does this by default. The container log shows the
+  proxy's IP instead of the client's.
+- **Restrict access to the port.** Docker-published ports bypass host firewalls like `ufw`. Bind the port to an
+  internal IP (see above) or allow only the NPM host in the `DOCKER-USER` iptables chain.
+- **NPM on the same Docker host:** put both containers into a shared Docker network and use `trivy-gui` / `8080` as
+  forward target. In that case the `ports:` section can be removed entirely.
+- Scans run in the background, so long scans do not hit proxy timeouts.
 
 **Update:** change the image tag (e.g. `0.5.0` → `0.6.0`), then run `docker compose pull && docker compose up -d`.
 Scan history and the Trivy database are kept in the volumes.
