@@ -61,4 +61,21 @@ wait_scan "$REMOTE_ID" "alpine:3.20 (Registry)"
 
 # Raw-Export muss gueltiges Trivy-JSON liefern
 curl -fsS "$BASE/api/scans/$LOCAL_ID/raw" | jq -e '.SchemaVersion == 2' >/dev/null
+
+# Bericht ueber die Funde im eigenen Image (nur mit verfuegbarem Fix)
+REPORT=$(curl -fsS "$BASE/api/scans/$LOCAL_ID" | jq -r '
+  .findings as $f
+  | "### Funde im Image (nur mit Fix)\n",
+    "| Ziel | Typ | Kritisch | Hoch | Mittel | Niedrig | Unbekannt |",
+    "|---|---|---|---|---|---|---|",
+    ($f | group_by(.target)[] | . as $g
+      | "| `\($g[0].target)` | \($g[0].type) | \([$g[] | select(.severity=="CRITICAL")] | length) | \([$g[] | select(.severity=="HIGH")] | length) | \([$g[] | select(.severity=="MEDIUM")] | length) | \([$g[] | select(.severity=="LOW")] | length) | \([$g[] | select(.severity=="UNKNOWN")] | length) |"),
+    "\n#### Kritisch und Hoch\n",
+    "| Schweregrad | ID | Paket | Installiert | Behoben in | Ziel |",
+    "|---|---|---|---|---|---|",
+    ($f | map(select(.severity=="CRITICAL" or .severity=="HIGH")) | sort_by(.severity, .pkg, .id)[]
+      | "| \(.severity) | \(.id) | \(.pkg) | \(.installed) | \(.fixed) | `\(.target)` |")')
+echo "$REPORT"
+if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then echo "$REPORT" >> "$GITHUB_STEP_SUMMARY"; fi
+
 echo "Smoke-Test erfolgreich."
