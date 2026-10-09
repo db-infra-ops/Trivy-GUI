@@ -103,7 +103,12 @@ services:
     ports:
       - "8080:8080"   # better: bind to an internal IP only, e.g. "10.0.0.5:8080:8080"
     environment:
-      AUTH_USER: admin
+      # Login credentials come from variables, so no password is stored in this file:
+      #   Portainer:      Stacks -> Environment variables -> add TRIVY_GUI_PASSWORD (and optionally TRIVY_GUI_USER)
+      #   docker compose: create a .env file next to this file containing:
+      #                     TRIVY_GUI_USER=admin
+      #                     TRIVY_GUI_PASSWORD=change-me-to-a-long-random-password
+      AUTH_USER: ${TRIVY_GUI_USER:-admin}
       AUTH_PASSWORD: ${TRIVY_GUI_PASSWORD:?TRIVY_GUI_PASSWORD is not set}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro   # optional, only for local images
@@ -115,7 +120,7 @@ volumes:
   trivy-cache:
 ```
 
-Set the password in a `.env` file next to it (`TRIVY_GUI_PASSWORD=...`) and start:
+Set `TRIVY_GUI_PASSWORD` (and optionally `TRIVY_GUI_USER`, default `admin`) as a stack environment variable in Portainer or in a `.env` file next to the compose file, then start. Without a password the stack refuses to start:
 
 ```bash
 docker compose up -d
