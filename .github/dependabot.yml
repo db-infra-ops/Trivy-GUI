@@ -1,0 +1,10 @@
+version: 2
+updates:
+  # Haelt die per SHA gepinnten GitHub Actions aktuell.
+  # Das Trivy-Basisimage wird bewusst NICHT automatisch aktualisiert (siehe README).
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 14

@@ -2,6 +2,8 @@
 
 [English](README.md) | **Deutsch**
 
+[![Docker image](https://github.com/db-infra-ops/Trivy-GUI/actions/workflows/docker.yml/badge.svg)](https://github.com/db-infra-ops/Trivy-GUI/actions/workflows/docker.yml)
+
 Schlanke Weboberfläche für [Trivy](https://github.com/aquasecurity/trivy), läuft komplett in einem Docker-Container.
 
 - Container-Images (lokal oder aus einer Registry) und Git-Repositories scannen
@@ -9,13 +11,25 @@ Schlanke Weboberfläche für [Trivy](https://github.com/aquasecurity/trivy), lä
 - Ergebnisübersicht nach Schweregrad, Volltextsuche, Filter (Art, Ziel, „nur mit Fix“), sortierbare Tabelle
 - Scan-Verlauf, erneut scannen, Abbrechen, Löschen
 - Export als Trivy-JSON oder CSV (Excel-tauglich)
+- Oberfläche auf Deutsch und Englisch (Umschalter in der Kopfzeile, wird im Browser gespeichert)
+- Fertiges Multi-Arch-Image (amd64/arm64) in der GitHub Container Registry
 - Keine Abhängigkeiten außer Trivy und Python 3 (nur Standardbibliothek)
 
 ## Start
 
+Mit dem fertigen Image (empfohlen):
+
 ```bash
-docker compose up -d --build
+docker compose up -d
 ```
+
+Oder ohne Compose:
+
+```bash
+docker run -d --name trivy-gui -p 127.0.0.1:8080:8080 -v /var/run/docker.sock:/var/run/docker.sock:ro -v trivy-gui-data:/data -v trivy-cache:/cache ghcr.io/db-infra-ops/trivy-gui:latest
+```
+
+Selbst bauen: `docker compose up -d --build`
 
 Danach <http://localhost:8080> öffnen.
 
@@ -58,9 +72,24 @@ Root-Rechte auf dem Host, und `:ro` ändert daran nichts. Deshalb:
 Die App selbst ruft Trivy ohne Shell auf, validiert Image-Namen und URLs streng, liefert Inhalte mit einer strikten CSP aus,
 prüft bei schreibenden Anfragen die Origin (CSRF) und übernimmt keine Secret-Inhalte („Match“) in die Oberfläche.
 
+## Docker-Image & CI
+
+Der GitHub-Actions-Workflow [`.github/workflows/docker.yml`](.github/workflows/docker.yml) baut das Image für
+`linux/amd64` und `linux/arm64` und veröffentlicht es unter `ghcr.io/db-infra-ops/trivy-gui`:
+
+| Auslöser | Tags |
+|---|---|
+| Push auf `main` | `latest`, `sha-<commit>` |
+| Git-Tag `v1.2.3` | `1.2.3`, `1.2`, `sha-<commit>` |
+| Pull Request | nur bauen, nichts wird veröffentlicht |
+
+Jedes Image enthält ein SBOM und Build-Provenance. Alle Actions sind per Commit-SHA gepinnt,
+Dependabot hält sie aktuell.
+
 ## Aufbau
 
 ```
+.github/workflows/    CI: Docker-Image bauen & veröffentlichen
 Dockerfile            Basis aquasec/trivy + python3
 docker-compose.yml
 app/server.py         HTTP-Server + Job-Queue (Python-Standardbibliothek)

@@ -1,10 +1,11 @@
 services:
   trivy-gui:
+    # Fertiges Image aus der CI. "docker compose up -d --build" baut stattdessen lokal.
+    image: ghcr.io/db-infra-ops/trivy-gui:latest
     build:
       context: .
       args:
         TRIVY_VERSION: "0.69.3"
-    image: trivy-gui:local
     container_name: trivy-gui
     ports:
       # Nur lokal erreichbar. Fuer Zugriff aus dem Netz "127.0.0.1:" entfernen

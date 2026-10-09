@@ -2,6 +2,8 @@
 
 **English** | [Deutsch](README_DE.md)
 
+[![Docker image](https://github.com/db-infra-ops/Trivy-GUI/actions/workflows/docker.yml/badge.svg)](https://github.com/db-infra-ops/Trivy-GUI/actions/workflows/docker.yml)
+
 Lightweight web interface for [Trivy](https://github.com/aquasecurity/trivy) that runs entirely inside a single Docker container.
 
 - Scan container images (local or from a registry) and Git repositories
@@ -9,15 +11,25 @@ Lightweight web interface for [Trivy](https://github.com/aquasecurity/trivy) tha
 - Results overview by severity, full-text search, filters (type, target, "fixed only"), sortable table
 - Scan history: rescan, cancel, delete
 - Export as Trivy JSON or CSV (Excel-friendly)
+- User interface in English and German (switch in the header, remembered per browser)
+- Prebuilt multi-arch image (amd64/arm64) on GitHub Container Registry
 - No dependencies besides Trivy and Python 3 (standard library only)
-
-> The user interface is currently in German.
 
 ## Getting started
 
+With the prebuilt image (recommended):
+
 ```bash
-docker compose up -d --build
+docker compose up -d
 ```
+
+Or without Compose:
+
+```bash
+docker run -d --name trivy-gui -p 127.0.0.1:8080:8080 -v /var/run/docker.sock:/var/run/docker.sock:ro -v trivy-gui-data:/data -v trivy-cache:/cache ghcr.io/db-infra-ops/trivy-gui:latest
+```
+
+To build the image yourself: `docker compose up -d --build`
 
 Then open <http://localhost:8080>.
 
@@ -60,9 +72,24 @@ root on the host, and `:ro` does not change that. Therefore:
 The app itself calls Trivy without a shell, strictly validates image names and URLs, serves content with a strict CSP,
 checks the origin of write requests (CSRF) and never shows secret contents ("Match") in the UI.
 
+## Docker image & CI
+
+The GitHub Actions workflow [`.github/workflows/docker.yml`](.github/workflows/docker.yml) builds the image for
+`linux/amd64` and `linux/arm64` and publishes it to `ghcr.io/db-infra-ops/trivy-gui`:
+
+| Trigger | Tags |
+|---|---|
+| Push to `main` | `latest`, `sha-<commit>` |
+| Git tag `v1.2.3` | `1.2.3`, `1.2`, `sha-<commit>` |
+| Pull request | build only, nothing is pushed |
+
+Every image ships with an SBOM and build provenance. All actions are pinned to commit SHAs;
+Dependabot keeps them up to date.
+
 ## Structure
 
 ```
+.github/workflows/    CI: build & publish the Docker image
 Dockerfile            Base aquasec/trivy + python3
 docker-compose.yml
 app/server.py         HTTP server + job queue (Python standard library)

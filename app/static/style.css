@@ -65,6 +65,14 @@ h2 { font-size: 15px; margin: 0 0 12px; }
   position: sticky; top: 0; z-index: 5;
 }
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 16px; }
+.topbar-right { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.lang-switch { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; flex: none; }
+.lang-switch button {
+  border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 12px; font-weight: 600;
+  padding: 4px 9px; cursor: pointer;
+}
+.lang-switch button[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); }
+@media (max-width: 600px) { #info { display: none; } }
 
 .layout {
   display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 16px;

@@ -13,54 +13,59 @@
       <img src="favicon.svg" alt="" width="22" height="22">
       <span>Trivy GUI</span>
     </div>
-    <div id="info" class="muted small"></div>
+    <div class="topbar-right">
+      <div id="info" class="muted small"></div>
+      <div class="lang-switch" role="group" aria-label="Sprache / Language">
+        <button type="button" data-lang="de">DE</button>
+        <button type="button" data-lang="en">EN</button>
+      </div>
+    </div>
   </header>
 
   <main class="layout">
     <aside class="sidebar">
       <section class="card">
-        <h2>Neuer Scan</h2>
+        <h2 data-i18n="form.title"></h2>
         <form id="scan-form" novalidate>
-          <div class="segmented" role="radiogroup" aria-label="Scan-Typ">
-            <label><input type="radio" name="type" value="image" checked><span>Container-Image</span></label>
-            <label><input type="radio" name="type" value="repo"><span>Git-Repository</span></label>
+          <div class="segmented" role="radiogroup" data-i18n-aria="form.type">
+            <label><input type="radio" name="type" value="image" checked><span data-i18n="type.image.long"></span></label>
+            <label><input type="radio" name="type" value="repo"><span data-i18n="type.repo.long"></span></label>
           </div>
 
           <label class="field">
-            <span id="target-label">Image</span>
-            <input id="target" name="target" list="images" autocomplete="off" spellcheck="false"
-                   placeholder="z. B. nginx:latest" required>
+            <span id="target-label"></span>
+            <input id="target" name="target" list="images" autocomplete="off" spellcheck="false" required>
           </label>
           <datalist id="images"></datalist>
           <p id="target-hint" class="muted small"></p>
 
           <fieldset>
-            <legend>Schweregrade</legend>
+            <legend data-i18n="form.severities"></legend>
             <div class="checks" id="sev-checks"></div>
           </fieldset>
 
           <fieldset>
-            <legend>Scanner</legend>
+            <legend data-i18n="form.scanners"></legend>
             <div class="checks">
-              <label><input type="checkbox" name="scanner" value="vuln" checked> Schwachstellen</label>
-              <label><input type="checkbox" name="scanner" value="secret" checked> Secrets</label>
-              <label><input type="checkbox" name="scanner" value="misconfig"> Fehlkonfigurationen</label>
-              <label><input type="checkbox" name="scanner" value="license"> Lizenzen</label>
+              <label><input type="checkbox" name="scanner" value="vuln" checked> <span data-i18n="kinds.vuln"></span></label>
+              <label><input type="checkbox" name="scanner" value="secret" checked> <span data-i18n="kinds.secret"></span></label>
+              <label><input type="checkbox" name="scanner" value="misconfig"> <span data-i18n="kinds.misconfig"></span></label>
+              <label><input type="checkbox" name="scanner" value="license"> <span data-i18n="kinds.license"></span></label>
             </div>
           </fieldset>
 
           <label class="check-line">
-            <input type="checkbox" id="ignore-unfixed"> Nur Schwachstellen mit verfügbarem Fix
+            <input type="checkbox" id="ignore-unfixed"> <span data-i18n="form.ignoreUnfixed"></span>
           </label>
 
-          <button type="submit" class="btn primary" id="submit-btn">Scan starten</button>
+          <button type="submit" class="btn primary" id="submit-btn" data-i18n="form.submit"></button>
           <p id="form-error" class="error" hidden></p>
         </form>
       </section>
 
       <section class="card">
         <div class="card-head">
-          <h2>Verlauf</h2>
+          <h2 data-i18n="history.title"></h2>
           <span id="history-count" class="muted small"></span>
         </div>
         <ul id="history" class="history"></ul>

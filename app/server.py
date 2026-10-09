@@ -59,6 +59,14 @@ _executor = ThreadPoolExecutor(max_workers=MAX_PARALLEL)
 _info_cache = {"at": 0.0, "data": None}
 
 
+class ApiError(ValueError):
+    """Fehler mit maschinenlesbarem Code; die Oberflaeche uebersetzt anhand des Codes."""
+
+    def __init__(self, code, message):
+        super().__init__(message)
+        self.code = code
+
+
 def now():
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
@@ -162,7 +170,8 @@ def normalize(report):
                 "id": s.get("RuleID", ""),
                 "severity": s.get("Severity", "UNKNOWN"),
                 "pkg": s.get("Category", ""),
-                "installed": f"Zeile {line}" if line else "",
+                "installed": "",
+                "line": line,
                 "fixed": "",
                 "status": "",
                 "title": s.get("Title", ""),
@@ -179,7 +188,7 @@ def normalize(report):
                 "installed": "",
                 "fixed": "",
                 "status": lic.get("Category", ""),
-                "title": f"Lizenz {lic.get('Name', '')} ({lic.get('Category', '')})",
+                "title": f"{lic.get('Name', '')} ({lic.get('Category', '')})",
                 "url": lic.get("Link", ""),
                 "target": lic.get("FilePath") or target,
                 "type": rtype,
@@ -233,7 +242,7 @@ def run_scan(sid):
                 _procs[sid] = proc
             rc = proc.wait()
     except OSError as e:
-        update_meta(sid, status="failed", finished=now(), error=f"Trivy konnte nicht gestartet werden: {e}")
+        update_meta(sid, status="failed", finished=now(), errorCode="start_failed", error=str(e))
         return
     finally:
         with _lock:
@@ -248,14 +257,14 @@ def run_scan(sid):
 
     if rc != 0 or not result_path.is_file():
         update_meta(sid, status="failed", finished=now(),
-                    error=tail(d / "trivy.log") or f"Trivy beendet mit Code {rc}")
+                    error=tail(d / "trivy.log") or f"Trivy exited with code {rc}")
         return
 
     try:
         with open(result_path, encoding="utf-8") as f:
             report = json.load(f)
     except (OSError, ValueError) as e:
-        update_meta(sid, status="failed", finished=now(), error=f"Ergebnis nicht lesbar: {e}")
+        update_meta(sid, status="failed", finished=now(), errorCode="result_unreadable", error=str(e))
         return
 
     findings = normalize(report)
@@ -270,18 +279,18 @@ def create_scan(payload):
     scan_type = payload.get("type")
     target = str(payload.get("target", "")).strip()
     if scan_type not in TYPES:
-        raise ValueError("Unbekannter Scan-Typ.")
+        raise ApiError("invalid_type", "Unknown scan type.")
     if scan_type == "image" and not IMAGE_RE.match(target):
-        raise ValueError("Ungueltiger Image-Name (Beispiel: nginx:1.27 oder ghcr.io/org/app:tag).")
+        raise ApiError("invalid_image", "Invalid image name.")
     if scan_type == "repo" and not REPO_RE.match(target):
-        raise ValueError("Ungueltige Repository-URL (nur https://..., z. B. https://github.com/org/repo).")
+        raise ApiError("invalid_repo", "Invalid repository URL (https only).")
 
     severities = [s for s in SEVERITIES if s in (payload.get("severities") or [])]
     scanners = [s for s in SCANNERS if s in (payload.get("scanners") or [])]
     if not severities:
-        raise ValueError("Mindestens einen Schweregrad auswaehlen.")
+        raise ApiError("no_severity", "Select at least one severity.")
     if not scanners:
-        raise ValueError("Mindestens einen Scanner auswaehlen.")
+        raise ApiError("no_scanner", "Select at least one scanner.")
 
     sid = uuid.uuid4().hex
     scan_dir(sid).mkdir(parents=True)
@@ -299,6 +308,7 @@ def create_scan(payload):
         "started": None,
         "finished": None,
         "error": None,
+        "errorCode": None,
         "counts": None,
         "total": None,
         "info": None,
@@ -325,7 +335,7 @@ def cancel_scan(sid):
 def recover_interrupted():
     for meta in list_scans():
         if meta.get("status") in ACTIVE:
-            meta.update(status="failed", finished=now(), error="Durch Neustart des Servers unterbrochen.")
+            meta.update(status="failed", finished=now(), errorCode="interrupted", error="Interrupted by server restart.")
             write_meta(meta)
 
 
@@ -417,14 +427,14 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def send_error_json(self, status, message):
-        self.send_json(status, {"error": message})
+    def send_error_json(self, status, message, code=None):
+        self.send_json(status, {"error": message, "code": code})
 
     def send_file(self, path, ctype, download_name=None):
         try:
             data = path.read_bytes()
         except OSError:
-            self.send_error_json(HTTPStatus.NOT_FOUND, "Nicht gefunden.")
+            self.send_error_json(HTTPStatus.NOT_FOUND, "Not found.", "not_found")
             return
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", ctype)
@@ -470,13 +480,16 @@ class Handler(BaseHTTPRequestHandler):
 
     def _read_json(self):
         if not self.headers.get("Content-Type", "").startswith("application/json"):
-            raise ValueError("Content-Type muss application/json sein.")
+            raise ApiError("bad_content_type", "Content-Type must be application/json.")
         length = int(self.headers.get("Content-Length") or 0)
         if length > 64 * 1024:
-            raise ValueError("Anfrage zu gross.")
-        payload = json.loads(self.rfile.read(length) or b"{}")
+            raise ApiError("too_large", "Request too large.")
+        try:
+            payload = json.loads(self.rfile.read(length) or b"{}")
+        except ValueError:
+            payload = None
         if not isinstance(payload, dict):
-            raise ValueError("Ungueltige Anfrage.")
+            raise ApiError("bad_request", "Invalid request.")
         return payload
 
     def _scan_route(self):
@@ -512,7 +525,7 @@ class Handler(BaseHTTPRequestHandler):
         else:
             sid, action = self._scan_route()
             if not sid:
-                self.send_error_json(HTTPStatus.NOT_FOUND, "Nicht gefunden.")
+                self.send_error_json(HTTPStatus.NOT_FOUND, "Not found.", "not_found")
             elif action is None:
                 self._get_scan(sid)
             elif action == "raw":
@@ -520,7 +533,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_file(scan_dir(sid) / "result.json", "application/json",
                                download_name=f"trivy-{safe}-{sid[:8]}.json")
             else:
-                self.send_error_json(HTTPStatus.NOT_FOUND, "Nicht gefunden.")
+                self.send_error_json(HTTPStatus.NOT_FOUND, "Not found.", "not_found")
 
     def _get_scan(self, sid):
         meta = read_meta(sid)
@@ -539,14 +552,14 @@ class Handler(BaseHTTPRequestHandler):
         if not self._check_auth():
             return
         if not self._same_origin():
-            self.send_error_json(HTTPStatus.FORBIDDEN, "Fremde Origin.")
+            self.send_error_json(HTTPStatus.FORBIDDEN, "Cross-origin request rejected.", "forbidden_origin")
             return
         path = urlparse(self.path).path
         if path == "/api/scans":
             try:
                 meta = create_scan(self._read_json())
-            except ValueError as e:
-                self.send_error_json(HTTPStatus.BAD_REQUEST, str(e))
+            except ApiError as e:
+                self.send_error_json(HTTPStatus.BAD_REQUEST, str(e), e.code)
                 return
             self.send_json(HTTPStatus.CREATED, {"scan": meta})
             return
@@ -554,17 +567,17 @@ class Handler(BaseHTTPRequestHandler):
         if sid and action == "cancel":
             self.send_json(HTTPStatus.OK, {"scan": cancel_scan(sid)})
         else:
-            self.send_error_json(HTTPStatus.NOT_FOUND, "Nicht gefunden.")
+            self.send_error_json(HTTPStatus.NOT_FOUND, "Not found.", "not_found")
 
     def do_DELETE(self):
         if not self._check_auth():
             return
         if not self._same_origin():
-            self.send_error_json(HTTPStatus.FORBIDDEN, "Fremde Origin.")
+            self.send_error_json(HTTPStatus.FORBIDDEN, "Cross-origin request rejected.", "forbidden_origin")
             return
         sid, action = self._scan_route()
         if not sid or action is not None:
-            self.send_error_json(HTTPStatus.NOT_FOUND, "Nicht gefunden.")
+            self.send_error_json(HTTPStatus.NOT_FOUND, "Not found.", "not_found")
             return
         cancel_scan(sid)
         proc = _procs.get(sid)
