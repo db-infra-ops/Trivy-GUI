@@ -7,7 +7,10 @@ ARG TRIVY_VERSION=0.74.0
 ARG TRIVY_DIGEST=sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969
 FROM aquasec/trivy:${TRIVY_VERSION}@${TRIVY_DIGEST}
 
-RUN apk add --no-cache python3
+# "apk upgrade" zieht Sicherheitsupdates der Alpine-Pakete aus dem Basisimage nach
+# (z. B. openssl, expat, pcre2). Schwachstellen im Trivy-Binary selbst lassen sich
+# nur durch eine neuere Trivy-Version beheben.
+RUN apk upgrade --no-cache && apk add --no-cache python3
 
 WORKDIR /app
 COPY app/ /app/

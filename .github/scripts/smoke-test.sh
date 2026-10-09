@@ -64,13 +64,15 @@ curl -fsS "$BASE/api/scans/$LOCAL_ID/raw" | jq -e '.SchemaVersion == 2' >/dev/nu
 
 # Bericht ueber die Funde im eigenen Image (nur mit verfuegbarem Fix)
 REPORT=$(curl -fsS "$BASE/api/scans/$LOCAL_ID" | jq -r '
-  .findings as $f
-  | "### Funde im Image (nur mit Fix)\n",
+  (.findings | map(select(.kind != "license"))) as $f
+  | (.findings | map(select(.kind == "license"))) as $lic
+  | "### Schwachstellen im Image (nur mit Fix)\n",
     "| Ziel | Typ | Kritisch | Hoch | Mittel | Niedrig | Unbekannt |",
     "|---|---|---|---|---|---|---|",
     ($f | group_by(.target)[] | . as $g
       | "| `\($g[0].target)` | \($g[0].type) | \([$g[] | select(.severity=="CRITICAL")] | length) | \([$g[] | select(.severity=="HIGH")] | length) | \([$g[] | select(.severity=="MEDIUM")] | length) | \([$g[] | select(.severity=="LOW")] | length) | \([$g[] | select(.severity=="UNKNOWN")] | length) |"),
-    "\n#### Kritisch und Hoch\n",
+    "\nLizenz-Funde (keine Schwachstellen): \($lic | length), davon Hoch/Kritisch: \([$lic[] | select(.severity=="HIGH" or .severity=="CRITICAL")] | length)\n",
+    "#### Kritisch und Hoch\n",
     "| Schweregrad | ID | Paket | Installiert | Behoben in | Ziel |",
     "|---|---|---|---|---|---|",
     ($f | map(select(.severity=="CRITICAL" or .severity=="HIGH")) | sort_by(.severity, .pkg, .id)[]
