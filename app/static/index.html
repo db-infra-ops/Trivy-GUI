@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Trivy GUI</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img src="favicon.svg" alt="" width="22" height="22">
+      <span>Trivy GUI</span>
+    </div>
+    <div id="info" class="muted small"></div>
+  </header>
+
+  <main class="layout">
+    <aside class="sidebar">
+      <section class="card">
+        <h2>Neuer Scan</h2>
+        <form id="scan-form" novalidate>
+          <div class="segmented" role="radiogroup" aria-label="Scan-Typ">
+            <label><input type="radio" name="type" value="image" checked><span>Container-Image</span></label>
+            <label><input type="radio" name="type" value="repo"><span>Git-Repository</span></label>
+          </div>
+
+          <label class="field">
+            <span id="target-label">Image</span>
+            <input id="target" name="target" list="images" autocomplete="off" spellcheck="false"
+                   placeholder="z. B. nginx:latest" required>
+          </label>
+          <datalist id="images"></datalist>
+          <p id="target-hint" class="muted small"></p>
+
+          <fieldset>
+            <legend>Schweregrade</legend>
+            <div class="checks" id="sev-checks"></div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Scanner</legend>
+            <div class="checks">
+              <label><input type="checkbox" name="scanner" value="vuln" checked> Schwachstellen</label>
+              <label><input type="checkbox" name="scanner" value="secret" checked> Secrets</label>
+              <label><input type="checkbox" name="scanner" value="misconfig"> Fehlkonfigurationen</label>
+              <label><input type="checkbox" name="scanner" value="license"> Lizenzen</label>
+            </div>
+          </fieldset>
+
+          <label class="check-line">
+            <input type="checkbox" id="ignore-unfixed"> Nur Schwachstellen mit verfügbarem Fix
+          </label>
+
+          <button type="submit" class="btn primary" id="submit-btn">Scan starten</button>
+          <p id="form-error" class="error" hidden></p>
+        </form>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Verlauf</h2>
+          <span id="history-count" class="muted small"></span>
+        </div>
+        <ul id="history" class="history"></ul>
+      </section>
+    </aside>
+
+    <section id="detail" class="detail"></section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
