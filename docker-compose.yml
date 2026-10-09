@@ -12,13 +12,9 @@ services:
     environment:
       MAX_PARALLEL_SCANS: "1"
       SCAN_TIMEOUT: "15m"
-      # Login aktivieren: Variablen in Portainer (Stack -> Environment variables)
-      # oder in einer .env-Datei neben dieser Datei setzen:
-      #   TRIVY_GUI_USER=admin
-      #   TRIVY_GUI_PASSWORD=hier-ein-langes-zufaelliges-passwort
-      # und die beiden Zeilen einkommentieren:
-      # AUTH_USER: ${TRIVY_GUI_USER:-admin}
-      # AUTH_PASSWORD: ${TRIVY_GUI_PASSWORD:?TRIVY_GUI_PASSWORD ist nicht gesetzt}
+      # Login aktivieren: die beiden Zeilen einkommentieren und das Passwort aendern.
+      # AUTH_USER: admin                # oder per Variable: ${TRIVY_GUI_USER}
+      # AUTH_PASSWORD: Str0ng-Passw0rd  # unbedingt aendern! oder per Variable: ${TRIVY_GUI_PASSWORD}
       # Zugangsdaten fuer private Registries (alternativ docker config mounten):
       # TRIVY_USERNAME: ""
       # TRIVY_PASSWORD: ""

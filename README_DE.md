@@ -121,13 +121,8 @@ services:
     ports:
       - "8080:8080"   # besser: nur an eine interne IP binden, z. B. "10.0.0.5:8080:8080"
     environment:
-      # Zugangsdaten kommen aus Variablen, damit kein Passwort in dieser Datei steht:
-      #   Portainer:      Stacks -> Environment variables -> TRIVY_GUI_PASSWORD (optional TRIVY_GUI_USER) anlegen
-      #   docker compose: Datei .env neben dieser Datei anlegen mit:
-      #                     TRIVY_GUI_USER=admin
-      #                     TRIVY_GUI_PASSWORD=hier-ein-langes-zufaelliges-passwort
-      AUTH_USER: ${TRIVY_GUI_USER:-admin}
-      AUTH_PASSWORD: ${TRIVY_GUI_PASSWORD:?TRIVY_GUI_PASSWORD ist nicht gesetzt}
+      AUTH_USER: admin                # oder per Variable: ${TRIVY_GUI_USER}
+      AUTH_PASSWORD: Str0ng-Passw0rd  # unbedingt ändern! oder per Variable: ${TRIVY_GUI_PASSWORD}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro   # optional, nur für lokale Images
       - trivy-gui-data:/data
@@ -138,7 +133,7 @@ volumes:
   trivy-cache:
 ```
 
-`TRIVY_GUI_PASSWORD` (optional `TRIVY_GUI_USER`, Standard `admin`) in Portainer als Stack-Umgebungsvariable oder in einer `.env`-Datei neben der Compose-Datei setzen und starten. Ohne Passwort startet der Stack nicht:
+Das Beispiel-Passwort durch ein eigenes ersetzen und starten. Alternativ die Variablen aus den Kommentaren verwenden und `TRIVY_GUI_USER` / `TRIVY_GUI_PASSWORD` in Portainer als Stack-Umgebungsvariablen oder in einer `.env`-Datei neben der Compose-Datei setzen:
 
 ```bash
 docker compose up -d
