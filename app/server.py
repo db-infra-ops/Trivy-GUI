@@ -5,11 +5,13 @@ Nutzt ausschliesslich die Python-Standardbibliothek. Scans laufen als
 Hintergrund-Jobs; Ergebnisse werden als JSON unter DATA_DIR/scans/<id>/ abgelegt.
 """
 import base64
+import hashlib
 import hmac
 import http.client
 import json
 import os
 import re
+import secrets
 import shutil
 import socket
 import subprocess
@@ -18,6 +20,7 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from http import HTTPStatus
+from http.cookies import CookieError, SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
@@ -30,8 +33,14 @@ PORT = int(os.environ.get("PORT", "8080"))
 DOCKER_SOCK = os.environ.get("DOCKER_SOCK", "/var/run/docker.sock")
 MAX_PARALLEL = max(1, int(os.environ.get("MAX_PARALLEL_SCANS", "1")))
 SCAN_TIMEOUT = os.environ.get("SCAN_TIMEOUT", "15m")
-AUTH_USER = os.environ.get("AUTH_USER", "")
 AUTH_PASSWORD = os.environ.get("AUTH_PASSWORD", "")
+AUTH_USER = os.environ.get("AUTH_USER", "") or ("admin" if AUTH_PASSWORD else "")
+AUTH_ENABLED = bool(AUTH_USER)
+SESSION_TTL = int(float(os.environ.get("SESSION_HOURS", "8")) * 3600)
+COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "auto").lower()   # auto | true | false
+SESSION_COOKIE = "trivy_gui_session"
+LOGIN_WINDOW = 300          # Sekunden
+LOGIN_MAX_FAILURES = 20     # Fehlversuche je Fenster, danach 429
 
 SCANS_DIR = DATA_DIR / "scans"
 SEVERITIES = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN"]
@@ -51,12 +60,18 @@ STATIC_FILES = {
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/style.css": ("style.css", "text/css; charset=utf-8"),
     "/favicon.svg": ("favicon.svg", "image/svg+xml"),
+    "/login": ("login.html", "text/html; charset=utf-8"),
+    "/login.js": ("login.js", "text/javascript; charset=utf-8"),
 }
+# Ohne Anmeldung erreichbar (Login-Seite und was sie braucht).
+PUBLIC_PATHS = {"/login", "/login.js", "/style.css", "/favicon.svg", "/api/health", "/api/session"}
 
 _lock = threading.Lock()
 _procs = {}
 _executor = ThreadPoolExecutor(max_workers=MAX_PARALLEL)
 _info_cache = {"at": 0.0, "data": None}
+_sessions = {}          # sha256(token) -> {"user": ..., "expires": epoch}
+_login_failures = []    # Zeitstempel fehlgeschlagener Logins
 
 
 class ApiError(ValueError):
@@ -396,6 +411,62 @@ def trivy_info():
 
 
 # --------------------------------------------------------------------------
+# Anmeldung
+# --------------------------------------------------------------------------
+
+def _token_key(token):
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def check_credentials(user, password):
+    ok_user = hmac.compare_digest(user.encode(), AUTH_USER.encode())
+    ok_pass = hmac.compare_digest(password.encode(), AUTH_PASSWORD.encode())
+    return ok_user and ok_pass
+
+
+def create_session(user):
+    token = secrets.token_urlsafe(32)
+    with _lock:
+        t = time.time()
+        for key in [k for k, v in _sessions.items() if v["expires"] < t]:
+            del _sessions[key]
+        _sessions[_token_key(token)] = {"user": user, "expires": t + SESSION_TTL}
+    return token
+
+
+def session_user(token):
+    if not token:
+        return None
+    with _lock:
+        sess = _sessions.get(_token_key(token))
+        if not sess:
+            return None
+        if sess["expires"] < time.time():
+            del _sessions[_token_key(token)]
+            return None
+        return sess["user"]
+
+
+def drop_session(token):
+    if token:
+        with _lock:
+            _sessions.pop(_token_key(token), None)
+
+
+def login_blocked():
+    """True, wenn zu viele Fehlversuche im aktuellen Zeitfenster aufgelaufen sind."""
+    with _lock:
+        cutoff = time.time() - LOGIN_WINDOW
+        _login_failures[:] = [t for t in _login_failures if t > cutoff]
+        return len(_login_failures) >= LOGIN_MAX_FAILURES
+
+
+def record_login_failure():
+    with _lock:
+        _login_failures.append(time.time())
+
+
+# --------------------------------------------------------------------------
 # HTTP
 # --------------------------------------------------------------------------
 
@@ -449,28 +520,111 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def _authorized(self):
-        if not AUTH_USER:
-            return True
-        header = self.headers.get("Authorization", "")
-        if not header.startswith("Basic "):
-            return False
+    def _session_token(self):
         try:
-            user, _, password = base64.b64decode(header[6:]).decode("utf-8").partition(":")
-        except (ValueError, UnicodeDecodeError):
-            return False
-        ok_user = hmac.compare_digest(user.encode(), AUTH_USER.encode())
-        ok_pass = hmac.compare_digest(password.encode(), AUTH_PASSWORD.encode())
-        return ok_user and ok_pass
+            cookie = SimpleCookie(self.headers.get("Cookie", ""))
+        except CookieError:
+            return None
+        morsel = cookie.get(SESSION_COOKIE)
+        return morsel.value if morsel else None
+
+    def _current_user(self):
+        """Angemeldeter Benutzer (Sitzungs-Cookie oder Basic-Auth fuer Skripte) oder None."""
+        if not AUTH_ENABLED:
+            return ""
+        user = session_user(self._session_token())
+        if user:
+            return user
+        header = self.headers.get("Authorization", "")
+        if header.startswith("Basic "):
+            # Gleiche Bremse wie beim Login-Formular, sonst liesse sich die Sperre ueber die API umgehen.
+            if login_blocked():
+                return None
+            try:
+                user, _, password = base64.b64decode(header[6:]).decode("utf-8").partition(":")
+            except (ValueError, UnicodeDecodeError):
+                return None
+            if check_credentials(user, password):
+                return user
+            record_login_failure()
+            time.sleep(1)
+        return None
 
     def _check_auth(self):
-        if self._authorized():
+        if self._current_user() is not None:
             return True
-        self.send_response(HTTPStatus.UNAUTHORIZED)
-        self.send_header("WWW-Authenticate", 'Basic realm="Trivy GUI", charset="UTF-8"')
-        self.send_header("Content-Length", "0")
-        self.end_headers()
+        path = urlparse(self.path).path
+        if self.command == "GET" and path in ("/", "/index.html"):
+            self.redirect("/login")
+        else:
+            self.send_error_json(HTTPStatus.UNAUTHORIZED, "Login required.", "unauthorized")
         return False
+
+    def redirect(self, location):
+        self.send_response(HTTPStatus.FOUND)
+        self.send_header("Location", location)
+        self.send_header("Content-Length", "0")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+
+    def _cookie_secure(self):
+        if COOKIE_SECURE in ("true", "1", "yes"):
+            return True
+        if COOKIE_SECURE in ("false", "0", "no"):
+            return False
+        # auto: hinter einem HTTPS-Reverse-Proxy (z. B. Nginx Proxy Manager)
+        proto = self.headers.get("X-Forwarded-Proto", "").split(",")[0].strip().lower()
+        return proto == "https"
+
+    def _session_cookie(self, token, max_age):
+        parts = [f"{SESSION_COOKIE}={token}", "Path=/", "HttpOnly", "SameSite=Strict", f"Max-Age={max_age}"]
+        if self._cookie_secure():
+            parts.append("Secure")
+        return "; ".join(parts)
+
+    def _login(self):
+        if not AUTH_ENABLED:
+            self.send_json(HTTPStatus.OK, {"ok": True})
+            return
+        if login_blocked():
+            self.send_error_json(HTTPStatus.TOO_MANY_REQUESTS, "Too many failed logins, try again later.",
+                                 "too_many_attempts")
+            return
+        try:
+            payload = self._read_json()
+        except ApiError as e:
+            self.send_error_json(HTTPStatus.BAD_REQUEST, str(e), e.code)
+            return
+        user = str(payload.get("user", ""))
+        password = str(payload.get("password", ""))
+        if not check_credentials(user, password):
+            record_login_failure()
+            time.sleep(1)   # bremst Passwort-Raten
+            self.log_message("Fehlgeschlagener Login fuer Benutzer %r", user[:64])
+            self.send_error_json(HTTPStatus.UNAUTHORIZED, "Invalid username or password.", "invalid_login")
+            return
+        token = create_session(user)
+        body = json.dumps({"ok": True, "user": user}).encode("utf-8")
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Set-Cookie", self._session_cookie(token, SESSION_TTL))
+        self._security_headers()
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _logout(self):
+        drop_session(self._session_token())
+        body = b'{"ok": true}'
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Set-Cookie", self._session_cookie("", 0))
+        self._security_headers()
+        self.end_headers()
+        self.wfile.write(body)
 
     def _same_origin(self):
         """Schutz vor CSRF: schreibende Anfragen nur von derselben Origin."""
@@ -508,15 +662,25 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/health":
             self.send_json(HTTPStatus.OK, {"ok": True})
             return
-        if not self._check_auth():
+        if path == "/api/session":
+            user = self._current_user()
+            self.send_json(HTTPStatus.OK, {"authRequired": AUTH_ENABLED,
+                                           "authenticated": user is not None, "user": user or None})
+            return
+        if path == "/login" and (not AUTH_ENABLED or self._current_user()):
+            self.redirect("/")
+            return
+        if path not in PUBLIC_PATHS and not self._check_auth():
             return
 
         if path in STATIC_FILES:
             name, ctype = STATIC_FILES[path]
             self.send_file(STATIC_DIR / name, ctype)
         elif path == "/api/info":
-            info = trivy_info()
+            info = dict(trivy_info())
             info["docker"] = docker_images() is not None
+            info["authRequired"] = AUTH_ENABLED
+            info["user"] = self._current_user() or None
             self.send_json(HTTPStatus.OK, info)
         elif path == "/api/images":
             images = docker_images()
@@ -550,12 +714,18 @@ class Handler(BaseHTTPRequestHandler):
         self.send_json(HTTPStatus.OK, resp)
 
     def do_POST(self):
-        if not self._check_auth():
-            return
         if not self._same_origin():
             self.send_error_json(HTTPStatus.FORBIDDEN, "Cross-origin request rejected.", "forbidden_origin")
             return
         path = urlparse(self.path).path
+        if path == "/api/login":
+            self._login()
+            return
+        if path == "/api/logout":
+            self._logout()
+            return
+        if not self._check_auth():
+            return
         if path == "/api/scans":
             try:
                 meta = create_scan(self._read_json())
@@ -571,10 +741,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error_json(HTTPStatus.NOT_FOUND, "Not found.", "not_found")
 
     def do_DELETE(self):
-        if not self._check_auth():
-            return
         if not self._same_origin():
             self.send_error_json(HTTPStatus.FORBIDDEN, "Cross-origin request rejected.", "forbidden_origin")
+            return
+        if not self._check_auth():
             return
         sid, action = self._scan_route()
         if not sid or action is not None:
@@ -594,10 +764,11 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     SCANS_DIR.mkdir(parents=True, exist_ok=True)
     recover_interrupted()
+    if AUTH_ENABLED and not AUTH_PASSWORD:
+        raise SystemExit("FEHLER: AUTH_USER ist gesetzt, aber AUTH_PASSWORD ist leer. Abbruch.")
     server = ThreadingHTTPServer((HOST, PORT), Handler)
     server.daemon_threads = True
-    if AUTH_USER and not AUTH_PASSWORD:
-        print("WARNUNG: AUTH_USER gesetzt, aber AUTH_PASSWORD leer.", flush=True)
+    print(f"Anmeldung: {'aktiv (Benutzer ' + AUTH_USER + ')' if AUTH_ENABLED else 'deaktiviert'}", flush=True)
     print(f"Trivy GUI laeuft auf http://{HOST}:{PORT} (parallele Scans: {MAX_PARALLEL})", flush=True)
     try:
         server.serve_forever()

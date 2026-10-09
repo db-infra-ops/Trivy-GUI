@@ -7,7 +7,7 @@ services:
     container_name: trivy-gui
     ports:
       # Nur lokal erreichbar. Fuer Zugriff aus dem Netz "127.0.0.1:" entfernen
-      # und unbedingt AUTH_USER/AUTH_PASSWORD setzen.
+      # und unbedingt die Anmeldung aktivieren (AUTH_PASSWORD, siehe unten).
       - "127.0.0.1:8080:8080"
     environment:
       MAX_PARALLEL_SCANS: "1"

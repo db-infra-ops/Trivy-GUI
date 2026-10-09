@@ -58,7 +58,8 @@ const I18N = {
     "col.fixed": "Behoben in", "col.title": "Titel", "col.target": "Ziel",
     "line": "Zeile {n}",
 
-    "btn.report": "HTML-Bericht",
+    "btn.report": "HTML-Bericht", "btn.logout": "Abmelden", "info.user": "Angemeldet als {u}",
+    "err.unauthorized": "Bitte erneut anmelden.",
     "report.title": "Trivy-Sicherheitsbericht", "report.target": "Ziel", "report.type": "Typ",
     "report.scanned": "Gescannt", "report.os": "Betriebssystem", "report.trivy": "Trivy-Version",
     "report.scanners": "Scanner", "report.severities": "Schweregrade", "report.filter": "Filter",
@@ -127,7 +128,8 @@ const I18N = {
     "col.fixed": "Fixed in", "col.title": "Title", "col.target": "Target",
     "line": "Line {n}",
 
-    "btn.report": "HTML report",
+    "btn.report": "HTML report", "btn.logout": "Log out", "info.user": "Signed in as {u}",
+    "err.unauthorized": "Please sign in again.",
     "report.title": "Trivy security report", "report.target": "Target", "report.type": "Type",
     "report.scanned": "Scanned", "report.os": "Operating system", "report.trivy": "Trivy version",
     "report.scanners": "Scanners", "report.severities": "Severities", "report.filter": "Filter",
@@ -225,6 +227,11 @@ async function api(path, options = {}) {
   const res = await fetch(path, { ...options, headers });
   let data = null;
   try { data = await res.json(); } catch { /* leerer Body */ }
+  if (res.status === 401) {
+    // Sitzung abgelaufen oder nicht angemeldet
+    location.replace("/login");
+    throw new Error(t("err.unauthorized"));
+  }
   if (!res.ok) throw new Error(errorText(data && data.code, (data && data.error) || `HTTP ${res.status}`));
   return data;
 }
@@ -287,6 +294,13 @@ function initForm() {
   for (const btn of document.querySelectorAll(".lang-switch button")) {
     btn.addEventListener("click", () => setLang(btn.dataset.lang));
   }
+  $("#logout-btn").addEventListener("click", async () => {
+    try {
+      await fetch("/api/logout", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    } finally {
+      location.replace("/login");
+    }
+  });
 
   $("#scan-form").addEventListener("submit", async (ev) => {
     ev.preventDefault();
@@ -377,6 +391,8 @@ function renderInfo() {
     info.dbUpdatedAt ? t("info.db", { d: fmtDate(info.dbUpdatedAt) }) : t("info.noDb"),
     info.docker ? t("info.docker") : t("info.noDocker"),
   ].join(" · ");
+  $("#user-box").hidden = !info.authRequired;
+  $("#user-name").textContent = info.user ? t("info.user", { u: info.user }) : "";
 }
 
 // ---------------------------------------------------------------------------

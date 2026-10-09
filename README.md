@@ -13,6 +13,7 @@ Lightweight web interface for [Trivy](https://github.com/aquasecurity/trivy) tha
 - "Only vulnerabilities with an available fix" is enabled by default (like `--ignore-unfixed`)
 - Export as Trivy JSON, CSV (Excel-friendly) or a standalone HTML report (printable / save as PDF, contains the currently filtered findings)
 - User interface in English and German (switch in the header, remembered per browser)
+- Optional login page with session cookie and brute-force protection
 - Prebuilt multi-arch image (amd64/arm64) on GitHub Container Registry
 - No dependencies besides Trivy and Python 3 (standard library only)
 
@@ -42,12 +43,28 @@ The first scan takes longer because Trivy has to download its vulnerability data
 |---|---|---|
 | `MAX_PARALLEL_SCANS` | `1` | Concurrent scans (Trivy locks its cache, so 1 is recommended) |
 | `SCAN_TIMEOUT` | `15m` | Timeout per scan |
-| `AUTH_USER` / `AUTH_PASSWORD` | empty | Enables HTTP Basic Auth |
+| `AUTH_PASSWORD` | empty | Enables the login page (see [Login](#login)) |
+| `AUTH_USER` | `admin` | Username for the login |
+| `SESSION_HOURS` | `8` | How long a login stays valid |
+| `COOKIE_SECURE` | `auto` | `Secure` flag of the session cookie: `auto` (set when the proxy sends `X-Forwarded-Proto: https`), `true`, `false` |
 | `TRIVY_USERNAME` / `TRIVY_PASSWORD` | empty | Credentials for private registries |
 | `PORT` | `8080` | Port inside the container |
 
 Alternatively, private registries can be used by mounting your Docker config:
 `- ~/.docker/config.json:/root/.docker/config.json:ro`
+
+## Login
+
+As soon as `AUTH_PASSWORD` is set, the GUI shows a login page (English/German) and a *Log out* button in the header.
+
+- Session cookie: random token, `HttpOnly`, `SameSite=Strict`, valid for `SESSION_HOURS`. Behind an HTTPS reverse proxy
+  it is automatically marked `Secure` (`COOKIE_SECURE=auto`).
+- Brute-force protection: every failed attempt is delayed by one second; after 20 failed attempts within 5 minutes,
+  logins are blocked temporarily (existing sessions keep working).
+- Sessions are kept in memory: after a container restart you have to sign in again.
+- Scripts can still call the API with HTTP Basic Auth, e.g. `curl -u admin:<password> http://host:8080/api/scans`.
+  The same brute-force protection applies.
+- If `AUTH_USER` is set without `AUTH_PASSWORD`, the container refuses to start.
 
 ## Security
 

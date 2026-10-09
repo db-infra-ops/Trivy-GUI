@@ -73,6 +73,20 @@ h2 { font-size: 15px; margin: 0 0 12px; }
 }
 .lang-switch button[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); }
 @media (max-width: 600px) { #info { display: none; } }
+.user-box { display: flex; align-items: center; gap: 8px; flex: none; }
+.user-box[hidden] { display: none; }
+.brand { white-space: nowrap; flex: none; }
+@media (max-width: 900px) { #user-name { display: none; } }
+.btn.small { padding: 4px 10px; font-size: 12px; }
+
+/* Login ------------------------------------------------------------------- */
+
+.login-wrap { display: flex; justify-content: center; padding: 64px 16px; }
+.login-card { width: 100%; max-width: 380px; padding: 28px; }
+.login-card h1 { font-size: 20px; margin: 8px 0 4px; }
+.login-card .field { margin-top: 14px; }
+.login-card .btn.primary { margin-top: 20px; }
+.login-logo { display: block; }
 
 .layout {
   display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 16px;
@@ -101,7 +115,7 @@ h2 { font-size: 15px; margin: 0 0 12px; }
 .field { display: block; margin-bottom: 4px; }
 .field > span { display: block; font-weight: 500; margin-bottom: 4px; }
 
-input[type="text"], input:not([type]), input[type="search"], select {
+input[type="text"], input:not([type]), input[type="search"], input[type="password"], select {
   width: 100%; padding: 7px 10px; border-radius: 6px;
   border: 1px solid var(--border); background: var(--surface); color: var(--text); font: inherit;
 }

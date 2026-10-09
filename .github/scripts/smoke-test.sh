@@ -80,4 +80,25 @@ REPORT=$(curl -fsS "$BASE/api/scans/$LOCAL_ID" | jq -r '
 echo "$REPORT"
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then echo "$REPORT" >> "$GITHUB_STEP_SUMMARY"; fi
 
+# Anmeldung: zweiter Container mit Passwort
+AUTH_NAME=trivy-gui-smoke-auth
+AUTH_BASE=http://127.0.0.1:8081
+JAR=$(mktemp)
+docker run -d --name "$AUTH_NAME" -p 127.0.0.1:8081:8080 -e AUTH_USER=ci -e AUTH_PASSWORD=ci-smoke-secret "$IMAGE" >/dev/null
+trap 'cleanup; docker rm -f "$AUTH_NAME" >/dev/null 2>&1 || true' EXIT
+for _ in $(seq 1 30); do
+  curl -fsS "$AUTH_BASE/api/health" >/dev/null 2>&1 && break
+  sleep 1
+done
+expect() { [ "$2" = "$3" ] || { echo "FEHLER Anmeldung: $1 (erwartet $3, erhalten $2)"; exit 1; }; echo "OK  Anmeldung: $1"; }
+expect "API ohne Login"      "$(curl -s -o /dev/null -w '%{http_code}' "$AUTH_BASE/api/scans")" 401
+expect "Startseite -> Login" "$(curl -s -o /dev/null -w '%{redirect_url}' "$AUTH_BASE/")" "$AUTH_BASE/login"
+expect "Login-Seite"         "$(curl -s -o /dev/null -w '%{http_code}' "$AUTH_BASE/login")" 200
+expect "falsches Passwort"   "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{"user":"ci","password":"x"}' "$AUTH_BASE/api/login")" 401
+expect "richtiges Passwort"  "$(curl -s -c "$JAR" -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{"user":"ci","password":"ci-smoke-secret"}' "$AUTH_BASE/api/login")" 200
+expect "API mit Sitzung"     "$(curl -s -b "$JAR" -o /dev/null -w '%{http_code}' "$AUTH_BASE/api/scans")" 200
+expect "API mit Basic-Auth"  "$(curl -s -u ci:ci-smoke-secret -o /dev/null -w '%{http_code}' "$AUTH_BASE/api/scans")" 200
+curl -s -b "$JAR" -X POST -H 'Content-Type: application/json' -d '{}' "$AUTH_BASE/api/logout" >/dev/null
+expect "API nach Logout"     "$(curl -s -b "$JAR" -o /dev/null -w '%{http_code}' "$AUTH_BASE/api/scans")" 401
+
 echo "Smoke-Test erfolgreich."

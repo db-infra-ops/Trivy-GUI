@@ -13,6 +13,7 @@ Schlanke Weboberfläche für [Trivy](https://github.com/aquasecurity/trivy), lä
 - „Nur Schwachstellen mit verfügbarem Fix“ ist standardmäßig aktiv (wie `--ignore-unfixed`)
 - Export als Trivy-JSON, CSV (Excel-tauglich) oder eigenständiger HTML-Bericht (druckbar / als PDF speicherbar, enthält die aktuell gefilterten Funde)
 - Oberfläche auf Deutsch und Englisch (Umschalter in der Kopfzeile, wird im Browser gespeichert)
+- Optionale Login-Seite mit Sitzungs-Cookie und Schutz vor Passwort-Raten
 - Fertiges Multi-Arch-Image (amd64/arm64) in der GitHub Container Registry
 - Keine Abhängigkeiten außer Trivy und Python 3 (nur Standardbibliothek)
 
@@ -42,12 +43,29 @@ Der erste Scan dauert länger, weil Trivy zuerst die Schwachstellen-Datenbank l�
 |---|---|---|
 | `MAX_PARALLEL_SCANS` | `1` | Gleichzeitige Scans (Trivy sperrt den Cache, daher 1 empfohlen) |
 | `SCAN_TIMEOUT` | `15m` | Timeout pro Scan |
-| `AUTH_USER` / `AUTH_PASSWORD` | leer | Aktiviert HTTP-Basic-Auth |
+| `AUTH_PASSWORD` | leer | Aktiviert die Login-Seite (siehe [Anmeldung](#anmeldung)) |
+| `AUTH_USER` | `admin` | Benutzername für die Anmeldung |
+| `SESSION_HOURS` | `8` | Wie lange eine Anmeldung gültig bleibt |
+| `COOKIE_SECURE` | `auto` | `Secure`-Flag des Sitzungs-Cookies: `auto` (gesetzt, wenn der Proxy `X-Forwarded-Proto: https` sendet), `true`, `false` |
 | `TRIVY_USERNAME` / `TRIVY_PASSWORD` | leer | Zugangsdaten für private Registries |
 | `PORT` | `8080` | Port im Container |
 
 Private Registries lassen sich alternativ nutzen, indem man die Docker-Konfiguration einbindet:
 `- ~/.docker/config.json:/root/.docker/config.json:ro`
+
+## Anmeldung
+
+Sobald `AUTH_PASSWORD` gesetzt ist, zeigt die GUI eine Login-Seite (Deutsch/Englisch) und in der Kopfzeile einen
+*Abmelden*-Button.
+
+- Sitzungs-Cookie: zufälliges Token, `HttpOnly`, `SameSite=Strict`, gültig für `SESSION_HOURS`. Hinter einem
+  HTTPS-Reverse-Proxy wird es automatisch als `Secure` markiert (`COOKIE_SECURE=auto`).
+- Schutz vor Passwort-Raten: Jeder Fehlversuch wird um eine Sekunde verzögert; nach 20 Fehlversuchen in 5 Minuten
+  wird die Anmeldung vorübergehend gesperrt (bestehende Sitzungen laufen weiter).
+- Sitzungen liegen im Arbeitsspeicher: Nach einem Neustart des Containers ist eine erneute Anmeldung nötig.
+- Skripte können die API weiterhin mit HTTP-Basic-Auth aufrufen, z. B. `curl -u admin:<passwort> http://host:8080/api/scans`.
+  Dafür gilt derselbe Schutz vor Passwort-Raten.
+- Ist `AUTH_USER` ohne `AUTH_PASSWORD` gesetzt, startet der Container nicht.
 
 ## Sicherheit
 
